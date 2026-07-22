@@ -3,8 +3,6 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    # Remove this line if present:
-    # container_name: taskforge-postgres
     environment:
       POSTGRES_USER: taskforge
       POSTGRES_PASSWORD: taskforge
@@ -19,13 +17,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      replicas: 1
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    # Remove this line if present:
-    # container_name: taskforge-redis
     ports:
       - "6379:6379"
     volumes:
@@ -35,15 +30,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      replicas: 1
+    restart: unless-stopped
 
   orchestrator:
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
-    # Remove this line if present:
-    # container_name: taskforge-orchestrator
     environment:
       DATABASE_URL: postgres://taskforge:taskforge@postgres:5432/taskforge?sslmode=disable
       REDIS_URL: redis://redis:6379/0
@@ -80,7 +72,7 @@ services:
         condition: service_started
     restart: unless-stopped
     deploy:
-      replicas: 3  # ← This now works without container_name
+      replicas: 3
 
 volumes:
   postgres_data:
