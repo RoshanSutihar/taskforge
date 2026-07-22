@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"taskforge/internal/domain"
 
@@ -16,15 +17,39 @@ type PostgresDB struct {
 }
 
 func NewPostgresDB(databaseURL string) (*PostgresDB, error) {
+	// Parse the URL
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
-	conn := stdlib.OpenDB(*config.ConnConfig)
-	db := sqlx.NewDb(conn, "pgx")
+	// FORCE TCP connection - disable Unix socket
+	config.ConnConfig.Host = "postgres"
+	config.ConnConfig.Port = 5432
+	config.ConnConfig.Database = "taskforge"
+	config.ConnConfig.User = "taskforge"
+	config.ConnConfig.Password = "taskforge"
 
-	if err := db.Ping(); err != nil {
+	config.MaxConns = 10
+	config.MinConns = 2
+	config.MaxConnLifetime = time.Hour
+	config.MaxConnIdleTime = 30 * time.Minute
+
+	// Create connection pool
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Convert pgxpool.Pool to *sql.DB
+	sqlDB := stdlib.OpenDB(*pool.Config().ConnConfig)
+	db := sqlx.NewDb(sqlDB, "pgx")
+
+	// Test connection
+	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -37,10 +62,10 @@ func (p *PostgresDB) Close() error {
 
 func (p *PostgresDB) CreateJob(ctx context.Context, job *domain.Job) error {
 	query := `
-        INSERT INTO jobs (id, type, payload, status, priority, max_retries, run_at, worker_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING created_at, updated_at
-    `
+		INSERT INTO jobs (id, type, payload, status, priority, max_retries, run_at, worker_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING created_at, updated_at
+	`
 	return p.db.QueryRowxContext(ctx, query,
 		job.ID, job.Type, job.Payload, job.Status, job.Priority,
 		job.MaxRetries, job.RunAt, job.WorkerID,
@@ -59,74 +84,74 @@ func (p *PostgresDB) GetJobByID(ctx context.Context, id string) (*domain.Job, er
 
 func (p *PostgresDB) UpdateJobStatus(ctx context.Context, id string, status domain.JobStatus, workerID *string, errorMsg *string) error {
 	query := `
-        UPDATE jobs 
-        SET status = $1, worker_id = $2, error_message = $3, updated_at = NOW()
-        WHERE id = $4
-    `
+		UPDATE jobs 
+		SET status = $1, worker_id = $2, error_message = $3, updated_at = NOW()
+		WHERE id = $4
+	`
 	_, err := p.db.ExecContext(ctx, query, status, workerID, errorMsg, id)
 	return err
 }
 
 func (p *PostgresDB) UpdateJobProcessing(ctx context.Context, id string, workerID string) error {
 	query := `
-        UPDATE jobs 
-        SET status = 'processing', worker_id = $1, started_at = NOW(), updated_at = NOW()
-        WHERE id = $2 AND status = 'pending'
-    `
+		UPDATE jobs 
+		SET status = 'processing', worker_id = $1, started_at = NOW(), updated_at = NOW()
+		WHERE id = $2 AND status = 'pending'
+	`
 	_, err := p.db.ExecContext(ctx, query, workerID, id)
 	return err
 }
 
 func (p *PostgresDB) CompleteJob(ctx context.Context, id string) error {
 	query := `
-        UPDATE jobs 
-        SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-        WHERE id = $1
-    `
+		UPDATE jobs 
+		SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+		WHERE id = $1
+	`
 	_, err := p.db.ExecContext(ctx, query, id)
 	return err
 }
 
 func (p *PostgresDB) FailJob(ctx context.Context, id string, errorMsg string) error {
 	query := `
-        UPDATE jobs 
-        SET status = 'failed', error_message = $1, updated_at = NOW()
-        WHERE id = $2
-    `
+		UPDATE jobs 
+		SET status = 'failed', error_message = $1, updated_at = NOW()
+		WHERE id = $2
+	`
 	_, err := p.db.ExecContext(ctx, query, errorMsg, id)
 	return err
 }
 
 func (p *PostgresDB) MoveToDLQ(ctx context.Context, id string, errorMsg string) error {
 	query := `
-        UPDATE jobs 
-        SET status = 'dlq', error_message = $1, updated_at = NOW()
-        WHERE id = $2
-    `
+		UPDATE jobs 
+		SET status = 'dlq', error_message = $1, updated_at = NOW()
+		WHERE id = $2
+	`
 	_, err := p.db.ExecContext(ctx, query, errorMsg, id)
 	return err
 }
 
 func (p *PostgresDB) RegisterWorker(ctx context.Context, worker *domain.Worker) error {
 	query := `
-        INSERT INTO workers (id, hostname, status, active_jobs, joined_at)
-        VALUES ($1, $2, 'active', $3, NOW())
-        ON CONFLICT (id) DO UPDATE SET
-            status = 'active',
-            last_heartbeat = NOW(),
-            updated_at = NOW()
-        RETURNING joined_at, last_heartbeat
-    `
+		INSERT INTO workers (id, hostname, status, active_jobs, joined_at)
+		VALUES ($1, $2, 'active', $3, NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			status = 'active',
+			last_heartbeat = NOW(),
+			updated_at = NOW()
+		RETURNING joined_at, last_heartbeat
+	`
 	return p.db.QueryRowxContext(ctx, query, worker.ID, worker.Hostname, worker.ActiveJobs).
 		Scan(&worker.JoinedAt, &worker.LastHeartbeat)
 }
 
 func (p *PostgresDB) UpdateWorkerHeartbeat(ctx context.Context, id string) error {
 	query := `
-        UPDATE workers 
-        SET last_heartbeat = NOW(), status = 'active'
-        WHERE id = $1
-    `
+		UPDATE workers 
+		SET last_heartbeat = NOW(), status = 'active'
+		WHERE id = $1
+	`
 	_, err := p.db.ExecContext(ctx, query, id)
 	return err
 }
@@ -140,10 +165,10 @@ func (p *PostgresDB) GetActiveWorkers(ctx context.Context) ([]domain.Worker, err
 
 func (p *PostgresDB) MarkWorkerOffline(ctx context.Context, id string) error {
 	query := `
-        UPDATE workers 
-        SET status = 'offline', updated_at = NOW()
-        WHERE id = $1
-    `
+		UPDATE workers 
+		SET status = 'offline', updated_at = NOW()
+		WHERE id = $1
+	`
 	_, err := p.db.ExecContext(ctx, query, id)
 	return err
 }
@@ -158,7 +183,6 @@ func (p *PostgresDB) GetJobsByStatus(ctx context.Context, status domain.JobStatu
 func (p *PostgresDB) GetQueueStats(ctx context.Context) (*domain.QueueStats, error) {
 	stats := &domain.QueueStats{}
 
-	// Get pending jobs count by priority
 	var high, def, low int64
 	err := p.db.GetContext(ctx, &high,
 		`SELECT COUNT(*) FROM jobs WHERE status = 'pending' AND priority = 'high'`)
@@ -193,10 +217,10 @@ func (p *PostgresDB) GetQueueStats(ctx context.Context) (*domain.QueueStats, err
 
 func (p *PostgresDB) RequeueWorkerJobs(ctx context.Context, workerID string) error {
 	query := `
-        UPDATE jobs 
-        SET status = 'pending', worker_id = NULL, started_at = NULL
-        WHERE worker_id = $1 AND status = 'processing'
-    `
+		UPDATE jobs 
+		SET status = 'pending', worker_id = NULL, started_at = NULL
+		WHERE worker_id = $1 AND status = 'processing'
+	`
 	_, err := p.db.ExecContext(ctx, query, workerID)
 	return err
 }
