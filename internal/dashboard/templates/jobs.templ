@@ -1,0 +1,32 @@
+package templates
+
+templ JobsList(jobs []interface{}) {
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                for _, job := range jobs {
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono">{ job.ID }</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">{ job.Type }</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                { job.Status }
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">{ job.Priority }</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">{ job.CreatedAt }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

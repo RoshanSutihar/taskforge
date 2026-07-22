@@ -1,0 +1,26 @@
+package templates
+
+templ Stats(queueStats map[string]interface{}, workers []interface{}, jobs map[string]interface{}) {
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-medium text-gray-500">High Priority</h3>
+            <p class="text-2xl font-bold text-red-600">{ queueStats["High"] }</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-medium text-gray-500">Default Priority</h3>
+            <p class="text-2xl font-bold text-blue-600">{ queueStats["Default"] }</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-medium text-gray-500">Low Priority</h3>
+            <p class="text-2xl font-bold text-gray-600">{ queueStats["Low"] }</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-medium text-gray-500">Delayed</h3>
+            <p class="text-2xl font-bold text-yellow-600">{ queueStats["Delayed"] }</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-sm font-medium text-gray-500">Dead Letter Queue</h3>
+            <p class="text-2xl font-bold text-red-700">{ queueStats["DLQ"] }</p>
+        </div>
+    </div>
+}

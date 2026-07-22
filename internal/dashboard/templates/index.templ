@@ -1,0 +1,25 @@
+package templates
+
+templ Index() {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            <title>TaskForge Dashboard</title>
+            <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+            <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+        </head>
+        <body class="bg-gray-100">
+            <div class="container mx-auto px-4 py-8">
+                <h1 class="text-3xl font-bold text-gray-800 mb-8">TaskForge Dashboard</h1>
+                
+                <div hx-get="/dashboard/stats" hx-trigger="every 2s" hx-target="#stats">
+                    <div id="stats" class="space-y-6">
+                        Loading...
+                    </div>
+                </div>
+            </div>
+        </body>
+    </html>
+}
