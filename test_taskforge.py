@@ -4,42 +4,45 @@ import time
 import sys
 from datetime import datetime, timedelta
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE_URL = "http://192.168.0.103:8188"
 API_URL = f"{BASE_URL}/v1"
 
-class TaskForgeTester:
+class TaskForgeMassTester:
     def __init__(self):
         self.job_ids = []
+        self.success_count = 0
+        self.fail_count = 0
     
     def print_header(self, text):
         print("\n" + "="*60)
         print(text)
         print("="*60 + "\n")
     
-    def print_success(self, text):
-        print("[OK] " + text)
-    
-    def print_error(self, text):
-        print("[ERROR] " + text)
-    
     def print_info(self, text):
-        print("[INFO] " + text)
+        print(f"[INFO] {text}")
+    
+    def print_progress(self, current, total, text=""):
+        percent = (current / total) * 100
+        bar_length = 40
+        filled = int(bar_length * current // total)
+        bar = '=' * filled + '-' * (bar_length - filled)
+        print(f"\r[{bar}] {percent:.1f}% ({current}/{total}) {text}", end="")
+        sys.stdout.flush()
     
     def get_stats(self):
         try:
             response = requests.get(f"{API_URL}/stats", timeout=5)
             if response.status_code == 200:
                 return response.json()
-            else:
-                return None
-        except Exception as e:
-            self.print_error(f"Failed to get stats: {e}")
+            return None
+        except:
             return None
     
     def create_job(self, job_type="test", payload=None, priority="default", delay_seconds=None):
         if payload is None:
-            payload = {"test": f"Job at {datetime.now().isoformat()}"}
+            payload = {"timestamp": datetime.now().isoformat()}
         
         data = {
             "type": job_type,
@@ -56,24 +59,59 @@ class TaskForgeTester:
                 f"{API_URL}/jobs",
                 json=data,
                 headers={"Content-Type": "application/json"},
-                timeout=5
+                timeout=10
             )
             if response.status_code == 201:
                 job_id = response.json().get("id")
-                self.job_ids.append(job_id)
                 return job_id
             else:
-                self.print_error(f"Failed to create job: {response.text}")
                 return None
-        except Exception as e:
-            self.print_error(f"Failed to create job: {e}")
+        except:
             return None
+    
+    def create_jobs_batch(self, count, priority="default", job_type="mass_test", delay_seconds=None):
+        """Create jobs in batch using threading"""
+        self.print_info(f"Creating {count} {priority} priority jobs...")
+        
+        def create_single(job_index):
+            payload = {"index": job_index, "priority": priority}
+            job_id = self.create_job(job_type, payload, priority, delay_seconds)
+            return job_id
+        
+        created = 0
+        failed = 0
+        
+        # Use ThreadPoolExecutor for parallel creation
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = []
+            for i in range(count):
+                future = executor.submit(create_single, i)
+                futures.append(future)
+            
+            for i, future in enumerate(as_completed(futures)):
+                result = future.result()
+                if result:
+                    self.job_ids.append(result)
+                    created += 1
+                else:
+                    failed += 1
+                
+                if (i + 1) % 100 == 0 or (i + 1) == count:
+                    self.print_progress(i + 1, count, f"Created: {created}, Failed: {failed}")
+        
+        print()
+        self.print_info(f"Created {created} jobs, Failed {failed} jobs")
+        self.success_count += created
+        self.fail_count += failed
+        return created, failed
     
     def print_stats_table(self, stats):
         if not stats:
+            print("[ERROR] No stats available")
             return
         
-        print("\nQueue Statistics:")
+        print("\n" + "-"*40)
+        print("QUEUE STATISTICS")
         print("-"*40)
         print(f"High Priority:    {stats.get('high', 0)}")
         print(f"Default Priority: {stats.get('default', 0)}")
@@ -82,197 +120,137 @@ class TaskForgeTester:
         print(f"Dead Letter Queue: {stats.get('dlq', 0)}")
         print("-"*40)
         total = sum(stats.values())
-        print(f"Total Jobs:       {total}")
-        print()
+        print(f"TOTAL JOBS:       {total}")
+        print("-"*40 + "\n")
     
-    def test_priority_queues(self):
-        self.print_header("TEST 1: Priority Queue Demonstration")
+    def monitor_stats(self, duration=30, interval=2):
+        """Monitor stats for a duration"""
+        self.print_header(f"MONITORING STATS (every {interval}s for {duration}s)")
         
-        self.print_info("Creating 3 High priority jobs...")
-        for i in range(3):
-            job_id = self.create_job(
-                job_type="priority_test",
-                payload={"priority": "high", "index": i},
-                priority="high"
-            )
-            if job_id:
-                self.print_success(f"High job {i+1} created")
-        
-        self.print_info("Creating 5 Default priority jobs...")
-        for i in range(5):
-            job_id = self.create_job(
-                job_type="priority_test",
-                payload={"priority": "default", "index": i},
-                priority="default"
-            )
-            if job_id:
-                self.print_success(f"Default job {i+1} created")
-        
-        self.print_info("Creating 7 Low priority jobs...")
-        for i in range(7):
-            job_id = self.create_job(
-                job_type="priority_test",
-                payload={"priority": "low", "index": i},
-                priority="low"
-            )
-            if job_id:
-                self.print_success(f"Low job {i+1} created")
-        
-        self.print_info("Initial queue stats:")
-        stats = self.get_stats()
-        self.print_stats_table(stats)
-        
-        return stats
-    
-    def test_delayed_jobs(self):
-        self.print_header("TEST 2: Delayed Jobs")
-        
-        self.print_info("Creating jobs with delays...")
-        
-        for i, delay in enumerate([10, 20, 30]):
-            job_id = self.create_job(
-                job_type="delayed_test",
-                payload={"delay": delay, "index": i},
-                priority="default",
-                delay_seconds=delay
-            )
-            if job_id:
-                self.print_success(f"Job {i+1} will run in {delay} seconds")
-        
-        self.print_info("Jobs are in the delayed queue")
-        stats = self.get_stats()
-        self.print_stats_table(stats)
-        
-        return stats
-    
-    def test_dlq(self):
-        self.print_header("TEST 3: Dead Letter Queue")
-        
-        self.print_info("Creating jobs that will fail...")
-        
-        for i in range(3):
-            job_id = self.create_job(
-                job_type="send_email",
-                payload={},
-                priority="default"
-            )
-            if job_id:
-                self.print_success(f"Failing job {i+1} created")
-        
-        return self.get_stats()
-    
-    def test_bulk_jobs(self):
-        self.print_header("TEST 4: Bulk Job Creation")
-        
-        count = 20
-        self.print_info(f"Creating {count} jobs...")
-        
-        def create_worker(job_id):
-            self.create_job(
-                job_type="bulk_test",
-                payload={"bulk_id": job_id},
-                priority="default"
-            )
-        
-        threads = []
-        for i in range(count):
-            t = threading.Thread(target=create_worker, args=(i,))
-            t.start()
-            threads.append(t)
-        
-        for t in threads:
-            t.join()
-        
-        self.print_success(f"Created {count} jobs")
-        stats = self.get_stats()
-        self.print_stats_table(stats)
-        
-        return stats
-    
-    def monitor_stats(self, duration=10):
-        self.print_header(f"Monitoring Stats (for {duration} seconds)")
-        
-        for i in range(duration):
+        for i in range(0, duration, interval):
             stats = self.get_stats()
             if stats:
-                print(f"[{i+1}s] High:{stats['high']} Default:{stats['default']} Low:{stats['low']} Delayed:{stats['delayed']} DLQ:{stats['dlq']}")
-            time.sleep(1)
+                total = sum(stats.values())
+                print(f"[{i}s] High:{stats['high']:>4} Default:{stats['default']:>4} "
+                      f"Low:{stats['low']:>4} Delayed:{stats['delayed']:>4} "
+                      f"DLQ:{stats['dlq']:>4} Total:{total:>4}")
+            else:
+                print(f"[{i}s] No stats available")
+            time.sleep(interval)
     
-    def get_dashboard_stats(self):
+    def test_priority_distribution(self):
+        """Test 10,000+ jobs across all priorities"""
+        self.print_header("MASS TEST: 10,000+ Jobs")
+        
+        total_jobs = 10000
+        
+        # 3000 High priority
+        self.create_jobs_batch(3000, "high")
+        
+        # 4000 Default priority
+        self.create_jobs_batch(4000, "default")
+        
+        # 3000 Low priority
+        self.create_jobs_batch(3000, "low")
+        
+        stats = self.get_stats()
+        self.print_stats_table(stats)
+        
+        return stats
+    
+    def test_delayed_batch(self):
+        """Test delayed jobs"""
+        self.print_header("DELAYED JOBS TEST")
+        
+        count = 1000
+        self.print_info(f"Creating {count} delayed jobs (30 second delay)...")
+        
+        created, failed = self.create_jobs_batch(
+            count, 
+            "default", 
+            "delayed_test",
+            delay_seconds=30
+        )
+        
+        stats = self.get_stats()
+        self.print_stats_table(stats)
+        
+        return stats
+    
+    def get_system_stats(self):
+        """Get system stats including workers"""
         try:
             response = requests.get(f"{BASE_URL}/dashboard/stats", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                print("\nDashboard Stats:")
+                print("\nSYSTEM STATUS")
                 print("-"*40)
                 
                 workers = data.get('workers', [])
-                if workers:
-                    print("\nActive Workers:")
-                    for worker in workers:
-                        print(f"  - {worker.get('id', 'unknown')} ({worker.get('status', 'unknown')}) Jobs: {worker.get('active_jobs', 0)}")
+                print(f"Active Workers: {len(workers)}")
+                for worker in workers:
+                    print(f"  - {worker.get('id', 'unknown')[:20]}... "
+                          f"Status: {worker.get('status', 'unknown')} "
+                          f"Jobs: {worker.get('active_jobs', 0)}")
                 
                 recent = data.get('recent_jobs', {})
-                if recent:
-                    print("\nRecent Jobs:")
-                    for status, jobs in recent.items():
-                        if jobs:
-                            print(f"  - {status}: {len(jobs)} jobs")
+                print("\nRecent Jobs:")
+                for status, jobs in recent.items():
+                    if jobs:
+                        print(f"  - {status}: {len(jobs)} jobs")
                 
                 return data
-            else:
-                return None
-        except Exception as e:
-            self.print_error(f"Failed to get dashboard stats: {e}")
+            return None
+        except:
             return None
     
-    def run_all_tests(self):
+    def run_mass_test(self):
+        """Run complete mass test"""
         print("\n" + "="*60)
-        print("TASKFORGE DEMO SUITE")
+        print("TASKFORGE MASS TEST - 10,000+ JOBS")
         print("="*60 + "\n")
         
-        self.print_info("Checking if TaskForge is running...")
+        self.print_info("Checking connection...")
         stats = self.get_stats()
         if not stats:
-            self.print_error(f"Cannot connect to TaskForge at {BASE_URL}")
-            self.print_info("Make sure the orchestrator is running")
+            self.print_info("Cannot connect to TaskForge. Make sure it's running.")
             sys.exit(1)
         
-        self.print_success(f"Connected to TaskForge at {BASE_URL}")
+        self.print_info(f"Connected to {BASE_URL}")
         self.print_stats_table(stats)
         
-        self.test_priority_queues()
+        self.test_priority_distribution()
         
-        print("\nWaiting for workers to process...")
+        self.print_info("Waiting for workers to start processing...")
         time.sleep(5)
         
-        self.test_delayed_jobs()
+        self.monitor_stats(20, 2)
         
-        self.test_bulk_jobs()
+        self.test_delayed_batch()
         
-        self.test_dlq()
-        
-        self.monitor_stats(10)
-        
-        self.get_dashboard_stats()
+        self.get_system_stats()
         
         self.print_header("TEST SUMMARY")
-        print("[OK] API is working")
-        print("[OK] Priority queues working")
-        print("[OK] Delayed jobs working")
-        print("[OK] Dead Letter Queue working")
-        print("[OK] Workers processing jobs")
-        print("[OK] Stats endpoint working")
+        print(f"Total jobs created: {len(self.job_ids)}")
+        print(f"Successful creations: {self.success_count}")
+        print(f"Failed creations: {self.fail_count}")
+        if self.success_count + self.fail_count > 0:
+            print(f"Success rate: {(self.success_count / (self.success_count + self.fail_count) * 100):.2f}%")
         
-        print(f"\nTotal jobs created: {len(self.job_ids)}")
-        print(f"API URL: {API_URL}")
-        print(f"Stats: {API_URL}/stats")
-        print(f"Dashboard: {BASE_URL}/dashboard/stats")
+        stats = self.get_stats()
+        if stats:
+            print(f"\nCurrent queue totals:")
+            print(f"  High: {stats.get('high', 0)}")
+            print(f"  Default: {stats.get('default', 0)}")
+            print(f"  Low: {stats.get('low', 0)}")
+            print(f"  Delayed: {stats.get('delayed', 0)}")
+            print(f"  DLQ: {stats.get('dlq', 0)}")
+            print(f"  Total: {sum(stats.values())}")
         
         print("\n" + "="*60)
-        print("Demo complete")
+        print("MASS TEST COMPLETE")
         print("="*60 + "\n")
 
 if __name__ == "__main__":
-    tester = TaskForgeTester()
-    tester.run_all_tests()
+    tester = TaskForgeMassTester()
+    tester.run_mass_test()

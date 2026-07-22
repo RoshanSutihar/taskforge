@@ -52,15 +52,14 @@ func (e *JobExecutor) Execute(ctx context.Context, jobID string, workerID string
 }
 
 func (e *JobExecutor) executeJob(ctx context.Context, job *domain.Job) error {
-	// Add different delays based on priority to show priority working
 	var delay time.Duration
 	switch job.Priority {
 	case domain.PriorityHigh:
-		delay = 3 * time.Second
+		delay = 500 * time.Millisecond
 	case domain.PriorityDefault:
-		delay = 5 * time.Second
+		delay = 1 * time.Second
 	case domain.PriorityLow:
-		delay = 8 * time.Second
+		delay = 2 * time.Second
 	}
 
 	select {
