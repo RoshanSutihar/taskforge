@@ -52,13 +52,21 @@ func (e *JobExecutor) Execute(ctx context.Context, jobID string, workerID string
 }
 
 func (e *JobExecutor) executeJob(ctx context.Context, job *domain.Job) error {
-	// This is where you'd implement your actual job execution logic
-	// For now, we'll just simulate work
+	// Add different delays based on priority to show priority working
+	var delay time.Duration
+	switch job.Priority {
+	case domain.PriorityHigh:
+		delay = 3 * time.Second
+	case domain.PriorityDefault:
+		delay = 5 * time.Second
+	case domain.PriorityLow:
+		delay = 8 * time.Second
+	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(100 * time.Millisecond):
-		// Simulate work
+	case <-time.After(delay):
 		return nil
 	}
 }
