@@ -66,8 +66,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    # Remove this line if present:
-    # container_name: taskforge-worker
     environment:
       DATABASE_URL: postgres://taskforge:taskforge@postgres:5432/taskforge?sslmode=disable
       REDIS_URL: redis://redis:6379/0
