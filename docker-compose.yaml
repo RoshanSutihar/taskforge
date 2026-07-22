@@ -42,7 +42,7 @@ services:
       REAPER_INTERVAL: 10
       SCHEDULER_INTERVAL: 1
     ports:
-      - "8888:8080"  # Mapped host port 8888 -> container port 8080
+      - "8188:8080"  # Mapped host port 8888 -> container port 8080
     depends_on:
       postgres:
         condition: service_healthy
