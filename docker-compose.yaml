@@ -7,8 +7,7 @@ services:
       POSTGRES_USER: taskforge
       POSTGRES_PASSWORD: taskforge
       POSTGRES_DB: taskforge
-    ports:
-      - "5432:5432"
+    # Removed host port mapping 5432:5432 to avoid host port collision
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
@@ -21,8 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Removed host port mapping 6379:6379 to avoid host port collision
     volumes:
       - redis_data:/data
     healthcheck:
@@ -44,7 +42,7 @@ services:
       REAPER_INTERVAL: 10
       SCHEDULER_INTERVAL: 1
     ports:
-      - "8080:8080"
+      - "8888:8080"  # Mapped host port 8888 -> container port 8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +50,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Base worker configuration using YAML anchor (&worker_config)
   worker-1: &worker_config
     build:
       context: .
@@ -71,7 +68,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Worker replicas referencing the anchor (*worker_config)
   worker-2:
     <<: *worker_config
 
