@@ -16,13 +16,22 @@ type RedisQueue struct {
 }
 
 func NewRedisQueue(redisURL string) (*RedisQueue, error) {
+	// If URL is empty, use default
+	if redisURL == "" {
+		redisURL = "redis://redis:6379/0"
+	}
+
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Redis URL: %w", err)
 	}
 
 	client := redis.NewClient(opts)
-	if err := client.Ping(context.Background()).Err(); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to ping Redis: %w", err)
 	}
 
@@ -66,7 +75,6 @@ func (r *RedisQueue) Dequeue(ctx context.Context, priority domain.JobPriority, t
 }
 
 func (r *RedisQueue) DequeueWithPriority(ctx context.Context, timeout time.Duration) (string, domain.JobPriority, error) {
-	// Try high priority first
 	highKey := "queue:high"
 	defaultKey := "queue:default"
 	lowKey := "queue:low"

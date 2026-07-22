@@ -27,6 +27,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("REAPER_INTERVAL", 10)
 	viper.SetDefault("ORCHESTRATOR_PORT", ":8080")
 	viper.SetDefault("ENVIRONMENT", "development")
+	viper.SetDefault("REDIS_URL", "redis://redis:6379/0")
 
 	viper.AutomaticEnv()
 
