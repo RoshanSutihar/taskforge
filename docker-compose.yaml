@@ -51,10 +51,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    deploy:
-      replicas: 1
 
-  worker:
+  # Base worker configuration using YAML anchor (&worker_config)
+  worker-1: &worker_config
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -71,8 +70,13 @@ services:
       orchestrator:
         condition: service_started
     restart: unless-stopped
-    deploy:
-      replicas: 3
+
+  # Worker replicas referencing the anchor (*worker_config)
+  worker-2:
+    <<: *worker_config
+
+  worker-3:
+    <<: *worker_config
 
 volumes:
   postgres_data:
